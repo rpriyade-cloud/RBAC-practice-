@@ -1,0 +1,79 @@
+create a ec2 instance for a minikube cluster with 2cpus 2gb ram and 30gb ebs volume
+code to install minikube on terminal
+======================================================================================
+sudo -i
+vim minikube.sh
+sudo apt update -y
+sudo apt upgrade -y
+sudo apt install curl wget apt-transport-https -y
+sudo curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo mv minikube-linux-amd64 /usr/local/bin/minikube
+sudo chmod +x /usr/local/bin/minikube
+sudo minikube version
+sudo curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo curl -LO "https://dl.k8s.io/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl.sha256"
+sudo echo "$(cat kubectl.sha256) kubectl" | sha256sum --check
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+sudo minikube start --driver=docker --force
+sh minikube.sh
+
+==================================================================================================
+Create certificates:
+mkdir dev1
+cd dev1
+
+openssl genrsa -out dev1.key 2048  
+  
+openssl req -new -key dev1.key -out dev1.csr -subj "/CN=dev1/O=group1"
+
+openssl x509 -req -in dev1.csr -CA ~/.minikube/ca.crt -CAkey ~/.minikube/ca.key -CAcreateserial -out dev1.crt -days 500
+==========================================================================================================
+Create User :
+1. Set a user entry in kubeconfig
+kubectl config set-credentials dev1 --client-certificate=dev1.crt --client-key=dev1.key
+2.Set a context entry in kubeconfig
+kubectl config set-context dev1 --cluster=minikube --user=dev1
+kubectl config view 
+we are on default minikube
+3.Switching to the created user
+kubectl config use-context dev1
+$ kubectl config current-context # check the current context
+dev1-context
+But, now, dev1 doesn’t have any access privileges to the cluster. For that we’ll have access denied if we try to create any resource:
+======================================================================================================================================
+Create Role
+
+First goback to minikube which has full admin access
+kubectl config use-context minikube
+
+kubectl create namespace dev
+kubectl create role dev1role --verb=create,delete,list --resource=pods,deployment -n dev --dry-run=client -o yaml >dev1role.yml
+kubectl get role -n dev
+
+we are defining the permissions to the user 
+======================================================================================================================================
+Create a rolebinding
+
+kubectl create rolebinding dev1rolebinding --role=dev1role --user=dev1 -n dev --dry-run=client -o yaml > dev1rolebinding.yml
+
+Now we are attaching the role to the namespcae dev and the user dev1
+
+Through rolebinding we attached permissions to dev1 user
+
+===========================================================================================================================
+Switch to dev1 user:
+
+We did all role and rolebinding on minikude as it has all admin access, so we switch to user dev1 now
+
+kubectl config use-context dev1
+
+Then  attach this user to ns /// In that ns we have already defined the role and rolebinding
+
+kubectl config set-context --current --namespace=dev
+
+now we can create pod,deployment as per the role we defined
+
+kubectl run pod1 --image nginx
+kubectl get pod
